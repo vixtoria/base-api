@@ -1,5 +1,7 @@
 class Api::V1::DeviseTokenAuth::SessionsController < DeviseTokenAuth::SessionsController
   skip_before_action :verify_authenticity_token
+
+  # POST /resource/sign_in
   def create
     # Check
     field = (resource_params.keys.map(&:to_sym) & resource_class.authentication_keys).first
@@ -35,14 +37,8 @@ class Api::V1::DeviseTokenAuth::SessionsController < DeviseTokenAuth::SessionsCo
         render_create_error_bad_credentials
         return
       end
-      # create client id
-      @client_id = SecureRandom.urlsafe_base64(nil, false)
-      @token     = SecureRandom.urlsafe_base64(nil, false)
 
-      @resource.tokens[@client_id] = {
-          token: BCrypt::Password.create(@token),
-          expiry: (Time.now + DeviseTokenAuth.token_lifespan).to_i
-      }
+      @token = @resource.create_token
       @resource.save
 
       sign_in(:user, @resource, store: false, bypass: false)

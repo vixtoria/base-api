@@ -1,24 +1,7 @@
 class Api::V1::DeviseTokenAuth::RegistrationsController < DeviseTokenAuth::RegistrationsController
   skip_before_action :verify_authenticity_token
 
-  def update
-    if @resource
-      if @resource.send(resource_update_method, account_update_params)
-        yield @resource if block_given?
-        if (params.has_key?(:settings))
-          params[:settings].each do |id, attrs|
-            @resource.settings[id] = attrs
-          end
-        end
-        render_update_success
-      else
-        render_update_error
-      end
-    else
-      render_update_error_user_not_found
-    end
-  end
-
+  # DELETE /resource
   def destroy
     if @resource
       @resource.discard
@@ -29,6 +12,7 @@ class Api::V1::DeviseTokenAuth::RegistrationsController < DeviseTokenAuth::Regis
     end
   end
 
+  # POST /resource
   def create
     build_resource
 
@@ -50,11 +34,12 @@ class Api::V1::DeviseTokenAuth::RegistrationsController < DeviseTokenAuth::Regis
     end
 
     # if whitelist is set, validate redirect_url against whitelist
-    return render_create_error_redirect_url_not_allowed if blacklisted_redirect_url?
+    return render_create_error_redirect_url_not_allowed if blacklisted_redirect_url?(@redirect_url)
 
     # override email confirmation, must be sent manually from ctrl
-    resource_class.set_callback('create', :after, :send_on_create_confirmation_instructions)
-    resource_class.skip_callback('create', :after, :send_on_create_confirmation_instructions)
+    callback_name = defined?(ActiveRecord) && resource_class < ActiveRecord::Base ? :commit : :create
+    resource_class.set_callback(callback_name, :after, :send_on_create_confirmation_instructions)
+    resource_class.skip_callback(callback_name, :after, :send_on_create_confirmation_instructions)
 
     if @resource.respond_to? :skip_confirmation_notification!
       # Fix duplicate e-mails by disabling Devise confirmation e-mail
@@ -66,12 +51,15 @@ class Api::V1::DeviseTokenAuth::RegistrationsController < DeviseTokenAuth::Regis
 
       unless @resource.confirmed?
         # user will require email authentication
-        @resource.send_confirmation_instructions
+        @resource.send_confirmation_instructions({
+                                                     client_config: params[:config_name],
+                                                     redirect_url: @redirect_url
+                                                 })
       end
 
       if active_for_authentication?
         # email auth has been bypassed, authenticate user
-        @client_id, @token = @resource.create_token
+        @token = @resource.create_token
         @resource.save!
         update_auth_header
       end
